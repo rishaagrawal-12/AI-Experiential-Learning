@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Employee Survey Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#f5f7fb; --card:#fff; --text:#172033; --muted:#687386; --border:#e3e7ef;
+  --navy:#1e293b; --blue:#2563eb; --green:#16a34a; --red:#dc2626; --amber:#d97706;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);font-family:Inter,Segoe UI,Arial,sans-serif;color:var(--text)}
+.container{max-width:1400px;margin:auto;padding:28px}
+h1,h2,h3{margin:0}
+.muted{color:var(--muted)}
+.upload-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+.upload-box{width:min(720px,100%);background:var(--card);border:1px solid var(--border);border-radius:20px;padding:42px;text-align:center;box-shadow:0 12px 40px rgba(20,30,50,.08)}
+.upload-box h1{font-size:34px;margin-bottom:12px}
+.upload-box p{line-height:1.6;margin:8px auto;max-width:600px}
+.file-label{display:inline-block;margin-top:22px;padding:14px 22px;background:var(--blue);color:white;border-radius:10px;font-weight:700;cursor:pointer}
+.file-label:hover{filter:brightness(.95)}
+#fileInput{display:none}
+#status{margin-top:18px;font-size:14px}
+.error{color:var(--red)}
+.success{color:var(--green)}
+#dashboard{display:none}
+.header{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:22px;flex-wrap:wrap}
+.header h1{font-size:30px}
+.controls{display:flex;gap:10px;flex-wrap:wrap}
+select,button{border:1px solid var(--border);background:white;border-radius:9px;padding:10px 13px;font-size:14px}
+button{cursor:pointer}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:19px}
+.card .label{font-size:13px;color:var(--muted);font-weight:600}
+.card .value{font-size:30px;font-weight:800;margin-top:7px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;margin-bottom:18px}
+.panel{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;min-width:0}
+.panel h2{font-size:17px;margin-bottom:4px}
+.panel .sub{font-size:12px;color:var(--muted);margin-bottom:14px}
+.chart-wrap{height:340px;position:relative}
+.guide{margin-top:18px}
+.guide-header{display:flex;justify-content:space-between;align-items:end;gap:10px;margin-bottom:14px}
+.problem-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.problem{border:1px solid var(--border);border-radius:12px;padding:17px;background:#fafbfe}
+.problem .rank{font-size:12px;font-weight:800;color:var(--blue);text-transform:uppercase}
+.problem h3{font-size:18px;margin:7px 0}
+.problem .big{font-size:25px;font-weight:800}
+.problem .metric{font-size:13px;color:var(--muted);margin-top:3px}
+.action{margin-top:13px;padding-top:12px;border-top:1px solid var(--border);font-size:14px;line-height:1.45}
+.note{font-size:12px;color:var(--muted);margin-top:14px}
+.heatmap{overflow:auto}
+.heat-table{border-collapse:separate;border-spacing:4px;width:100%;min-width:700px}
+.heat-table th{font-size:12px;color:var(--muted);padding:7px;text-align:center}
+.heat-table td{padding:13px 8px;text-align:center;border-radius:7px;font-weight:700;font-size:13px}
+.heat-table .rowlabel{text-align:left;background:transparent;color:var(--text);font-weight:700}
+.badge{display:inline-block;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:700;background:#eef2ff;color:#3730a3}
+.footer{padding:20px 0 35px;text-align:center;color:var(--muted);font-size:12px}
+@media(max-width:900px){.cards{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.problem-grid{grid-template-columns:1fr}}
+@media(max-width:600px){.container{padding:16px}.cards{grid-template-columns:1fr}.upload-box{padding:28px 20px}}
+</style>
+</head>
+<body>
+<section id="uploadScreen" class="upload-screen">
+  <div class="upload-box">
+    <h1>Employee Survey Dashboard</h1>
+    <p class="muted">Upload your Excel file to generate the dashboard. The file is processed in your browser.</p>
+    <p class="muted">The dashboard supports a workbook containing response data and, if available, a separate coded sheet with <b>themes</b> and <b>tone</b>.</p>
+    <label class="file-label" for="fileInput">Upload Excel File</label>
+    <input id="fileInput" type="file" accept=".xlsx,.xls,.csv">
+    <div id="status"></div>
+  </div>
+</section>
+
+<main id="dashboard" class="container">
+  <div class="header">
+    <div>
+      <h1>Employee Survey Dashboard</h1>
+      <div class="muted" id="fileName">Uploaded file</div>
+    </div>
+    <div class="controls">
+      <select id="deptFilter"><option value="ALL">All departments</option></select>
+      <select id="tenureFilter"><option value="ALL">All tenure bands</option></select>
+      <button id="changeFile">Upload another file</button>
+    </div>
+  </div>
+
+  <section class="cards">
+    <div class="card"><div class="label">Total responses</div><div class="value" id="totalResponses">—</div></div>
+    <div class="card"><div class="label">eNPS</div><div class="value" id="overallEnps">—</div></div>
+    <div class="card"><div class="label">% Negative comments</div><div class="value" id="negativePct">—</div></div>
+    <div class="card"><div class="label">Average score</div><div class="value" id="avgScore">—</div></div>
+  </section>
+
+  <section class="grid">
+    <div class="panel">
+      <h2>Themes by tone</h2>
+      <div class="sub">Theme assignments split into Positive and Negative comments</div>
+      <div class="chart-wrap"><canvas id="themeChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <h2>Average score: q1 to q5</h2>
+      <div class="sub">Average of the five 1–5 survey questions</div>
+      <div class="chart-wrap"><canvas id="scoreChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <h2>eNPS by department</h2>
+      <div class="sub">Promoters (9–10) minus detractors (0–6)</div>
+      <div class="chart-wrap"><canvas id="deptEnpsChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <h2>Department by theme heatmap</h2>
+      <div class="sub">Number of comments assigned to each theme</div>
+      <div class="heatmap" id="heatmap"></div>
+    </div>
+  </section>
+
+  <section class="panel guide">
+    <div class="guide-header">
+      <div>
+        <h2>Manager decision guide</h2>
+        <div class="sub">Top 3 problems are based on the highest number of Negative comments in the filtered data.</div>
+      </div>
+      <span class="badge" id="guideScope">Current filters</span>
+    </div>
+    <div class="problem-grid" id="problemGrid"></div>
+    <div class="note">Linked questions: Manager support → q2; Pay and benefits → q3; Career growth → q4; Flexibility → q5; Workload → q5; Tools and systems → q1. A low score means 1 or 2.</div>
+  </section>
+
+  <div class="footer">Dashboard calculations are generated from the uploaded file. No data is sent to a server by this HTML page.</div>
+</main>
+
+<script>
+let rawRows = [];
+let codedRows = [];
+let charts = {};
+const THEMES = ["Manager support","Flexibility","Workload","Tools and systems","Pay and benefits","Career growth"];
+const LINKED_Q = {
+  "Manager support":"q2_manager_support_1to5",
+  "Flexibility":"q5_worklife_balance_1to5",
+  "Workload":"q5_worklife_balance_1to5",
+  "Tools and systems":"q1_clear_goals_1to5",
+  "Pay and benefits":"q3_fair_pay_1to5",
+  "Career growth":"q4_growth_1to5"
+};
+const ACTIONS = {
+  "Manager support":"Schedule regular 1-to-1s and give managers a simple feedback checklist.",
+  "Flexibility":"Review flexible/hybrid working options and clarify the team’s attendance rules.",
+  "Workload":"Review workload by team, remove low-priority work, and check staffing/capacity.",
+  "Tools and systems":"List the most-used system problems and fix the highest-impact issues first.",
+  "Pay and benefits":"Review pay/benefit concerns and explain the current pay and benefits structure clearly.",
+  "Career growth":"Create clear promotion criteria and discuss development goals in 1-to-1s."
+};
+
+document.getElementById("fileInput").addEventListener("change", handleFile);
+document.getElementById("changeFile").addEventListener("click",()=>document.getElementById("fileInput").click());
+document.getElementById("deptFilter").addEventListener("change", render);
+document.getElementById("tenureFilter").addEventListener("change", render);
+
+function norm(v){return String(v ?? "").trim();}
+function num(v){const n=Number(v); return Number.isFinite(n)?n:null;}
+function pct(a,b){return b?100*a/b:0;}
+function fmt1(v){return Number.isFinite(v)?v.toFixed(2):"—";}
+function enps(rows){
+  const vals=rows.map(r=>num(r.enps_0to10)).filter(v=>v!==null);
+  if(!vals.length)return null;
+  const promoters=vals.filter(v=>v>=9).length;
+  const detractors=vals.filter(v=>v<=6).length;
+  // eNPS = % Promoters - % Detractors. pct() already returns 0-100.
+  return pct(promoters,vals.length)-pct(detractors,vals.length);
+}
+function average(rows,col){
+  const vals=rows.map(r=>num(r[col])).filter(v=>v!==null);
+  return vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null;
+}
+function splitThemes(v){
+  return norm(v).split(/[;,|]/).map(x=>x.trim()).filter(x=>THEMES.includes(x));
+}
+function normalizeCodedRow(r){
+  const parts=[];
+  if(r.themes) parts.push(...splitThemes(r.themes));
+  if(r.theme_1) parts.push(...splitThemes(r.theme_1));
+  if(r.theme_2) parts.push(...splitThemes(r.theme_2));
+  return {...r, themes:[...new Set(parts)].join("; ")};
+}
+function getRowsForSheet(wb, preferred){
+  for(const s of preferred){
+    if(wb.SheetNames.includes(s)) return XLSX.utils.sheet_to_json(wb.Sheets[s],{defval:""});
+  }
+  return [];
+}
+function mergeCoded(base,coded){
+  if(!coded.length) return base;
+  const map=new Map(coded.map(r=>normalizeCodedRow(r)).map(r=>[norm(r.response_id),r]));
+  return base.map(r=>{
+    const c=map.get(norm(r.response_id))||{};
+    return {...r, themes:c.themes||r.themes||"", tone:c.tone||r.tone||""};
+  });
+}
+async function handleFile(e){
+  const file=e.target.files[0]; if(!file)return;
+  const status=document.getElementById("status");
+  status.className=""; status.textContent="Reading file…";
+  try{
+    const data=await file.arrayBuffer();
+    const wb=XLSX.read(data,{type:"array"});
+    const required=["response_id","department","tenure_band","q1_clear_goals_1to5","q2_manager_support_1to5","q3_fair_pay_1to5","q4_growth_1to5","q5_worklife_balance_1to5","enps_0to10"];
+    let responses=[];
+    for(const s of wb.SheetNames){
+      const rows=XLSX.utils.sheet_to_json(wb.Sheets[s],{defval:""});
+      if(rows.length && required.every(c=>Object.prototype.hasOwnProperty.call(rows[0],c))){responses=rows;break;}
+    }
+    if(!responses.length) throw new Error("This Excel file does not contain the full survey data. Please upload the dashboard input file containing response_id, department, tenure_band, q1–q5 and enps_0to10.");
+    codedRows=[];
+    for(const s of wb.SheetNames){
+      const rows=XLSX.utils.sheet_to_json(wb.Sheets[s],{defval:""});
+      if(rows.length && rows[0].response_id!==undefined && (rows[0].themes!==undefined || rows[0].theme_1!==undefined || rows[0].theme_2!==undefined) && rows[0].tone!==undefined){codedRows=rows;break;}
+    }
+    rawRows=mergeCoded(responses,codedRows);
+    const hasBase=["department","tenure_band","q1_clear_goals_1to5","q2_manager_support_1to5","q3_fair_pay_1to5","q4_growth_1to5","q5_worklife_balance_1to5","enps_0to10"].every(c=>c in rawRows[0]);
+    if(!hasBase) throw new Error("Required survey columns are missing. Please check q1–q5, enps_0to10, department and tenure_band.");
+    populateFilters();
+    document.getElementById("fileName").textContent=`${file.name} • ${rawRows.length} response rows`;
+    document.getElementById("uploadScreen").style.display="none";
+    document.getElementById("dashboard").style.display="block";
+    render();
+  }catch(err){
+    status.className="error"; status.textContent=err.message;
+  }
+}
+function populateFilters(){
+  const d=[...new Set(rawRows.map(r=>norm(r.department)).filter(Boolean))].sort();
+  const t=[...new Set(rawRows.map(r=>norm(r.tenure_band)).filter(Boolean))].sort();
+  const ds=document.getElementById("deptFilter"), ts=document.getElementById("tenureFilter");
+  ds.innerHTML='<option value="ALL">All departments</option>'+d.map(x=>`<option>${esc(x)}</option>`).join("");
+  ts.innerHTML='<option value="ALL">All tenure bands</option>'+t.map(x=>`<option>${esc(x)}</option>`).join("");
+}
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));}
+function filtered(){
+  const d=document.getElementById("deptFilter").value, t=document.getElementById("tenureFilter").value;
+  return rawRows.filter(r=>(d==="ALL"||norm(r.department)===d)&&(t==="ALL"||norm(r.tenure_band)===t));
+}
+function render(){
+  const rows=filtered();
+  updateCards(rows);
+  renderThemeChart(rows);
+  renderScoreChart(rows);
+  renderDeptEnps(rows);
+  renderHeatmap(rows);
+  renderGuide(rows);
+}
+function updateCards(rows){
+  document.getElementById("totalResponses").textContent=rows.length;
+  const e=enps(rows); document.getElementById("overallEnps").textContent=e===null?"—":e.toFixed(1);
+  const withTone=rows.filter(r=>["Positive","Negative"].includes(norm(r.tone)));
+  const neg=withTone.filter(r=>norm(r.tone)==="Negative").length;
+  document.getElementById("negativePct").textContent=withTone.length?(100*neg/withTone.length).toFixed(1)+"%":"—";
+  const qs=["q1_clear_goals_1to5","q2_manager_support_1to5","q3_fair_pay_1to5","q4_growth_1to5","q5_worklife_balance_1to5"];
+  const vals=rows.flatMap(r=>qs.map(q=>num(r[q])).filter(v=>v!==null));
+  document.getElementById("avgScore").textContent=vals.length?(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(2):"—";
+}
+function destroy(name){if(charts[name]){charts[name].destroy();delete charts[name];}}
+function renderThemeChart(rows){
+  const pos=THEMES.map(t=>rows.filter(r=>norm(r.tone)==="Positive"&&splitThemes(r.themes).includes(t)).length);
+  const neg=THEMES.map(t=>rows.filter(r=>norm(r.tone)==="Negative"&&splitThemes(r.themes).includes(t)).length);
+  destroy("theme");
+  charts.theme=new Chart(document.getElementById("themeChart"),{type:"bar",data:{labels:THEMES,datasets:[
+    {label:"Positive",data:pos,backgroundColor:"#16a34a"},
+    {label:"Negative",data:neg,backgroundColor:"#dc2626"}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"top"}},scales:{x:{ticks:{maxRotation:25,minRotation:0}},y:{beginAtZero:true,ticks:{precision:0}}}}});
+}
+function renderScoreChart(rows){
+  const qs=["q1_clear_goals_1to5","q2_manager_support_1to5","q3_fair_pay_1to5","q4_growth_1to5","q5_worklife_balance_1to5"];
+  const labels=["q1","q2","q3","q4","q5"];
+  destroy("score");
+  charts.score=new Chart(document.getElementById("scoreChart"),{type:"bar",data:{labels,datasets:[{label:"Average score",data:qs.map(q=>average(rows,q)),backgroundColor:"#2563eb"}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{min:1,max:5,ticks:{stepSize:1}}}}});
+}
+function renderDeptEnps(rows){
+  const depts=[...new Set(rows.map(r=>norm(r.department)).filter(Boolean))].sort();
+  const vals=depts.map(d=>enps(rows.filter(r=>norm(r.department)===d)));
+  destroy("dept");
+  charts.dept=new Chart(document.getElementById("deptEnpsChart"),{type:"bar",data:{labels:depts,datasets:[{label:"eNPS",data:vals,backgroundColor:"#334155"}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{min:-100,max:100}}}});
+}
+function renderHeatmap(rows){
+  const depts=[...new Set(rows.map(r=>norm(r.department)).filter(Boolean))].sort();
+  const matrix=depts.map(d=>THEMES.map(t=>rows.filter(r=>norm(r.department)===d&&splitThemes(r.themes).includes(t)).length));
+  const max=Math.max(1,...matrix.flat());
+  let html='<table class="heat-table"><thead><tr><th></th>'+THEMES.map(t=>`<th>${esc(t)}</th>`).join("")+'</tr></thead><tbody>';
+  matrix.forEach((vals,i)=>{
+    html+=`<tr><td class="rowlabel">${esc(depts[i])}</td>`;
+    vals.forEach(v=>{
+      const alpha=.10+.75*(v/max);
+      html+=`<td style="background:rgba(37,99,235,${alpha});color:${alpha>.48?"white":"#172033"}">${v}</td>`;
+    });
+    html+='</tr>';
+  });
+  html+='</tbody></table>';
+  document.getElementById("heatmap").innerHTML=html;
+}
+function renderGuide(rows){
+  const stats=THEMES.map(theme=>{
+    const themeRows=rows.filter(r=>splitThemes(r.themes).includes(theme));
+    const negRows=themeRows.filter(r=>norm(r.tone)==="Negative");
+    const q=LINKED_Q[theme];
+    const low=negRows.filter(r=>{const v=num(r[q]);return v!==null&&v<=2}).length;
+    return {theme,negative:negRows.length,low,pctLow:pct(low,negRows.length),avg:average(negRows,q)};
+  }).sort((a,b)=>b.negative-a.negative).slice(0,3);
+  document.getElementById("problemGrid").innerHTML=stats.length?stats.map((s,i)=>`
+    <div class="problem">
+      <div class="rank">Problem ${i+1}</div>
+      <h3>${esc(s.theme)}</h3>
+      <div class="big">${s.negative} Negative</div>
+      <div class="metric">${s.pctLow.toFixed(1)}% have a low linked score (1–2)</div>
+      <div class="metric">Linked-question average: ${fmt1(s.avg)}</div>
+      <div class="action"><b>Simple action:</b> ${esc(ACTIONS[s.theme])}</div>
+    </div>`).join(""):'<div class="muted">No coded themes/tone were found for the current filter.</div>';
+}
+</script>
+</body>
+</html>
